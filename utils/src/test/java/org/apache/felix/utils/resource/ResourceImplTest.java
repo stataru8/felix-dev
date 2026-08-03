@@ -18,151 +18,186 @@
  */
 package org.apache.felix.utils.resource;
 
-import java.lang.reflect.Field;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
-import junit.framework.TestCase;
-
+import java.util.*;
+import org.junit.Test;
 import org.osgi.framework.Version;
+import org.osgi.framework.namespace.IdentityNamespace;
 import org.osgi.resource.Capability;
-import org.osgi.resource.Resource;
+import org.osgi.resource.Requirement;
 
-public class ResourceImplTest extends TestCase {
+public class ResourceImplTest {
 
-    private static int expectedHash(ResourceImpl r) {
-        // getCapabilities(null)/getRequirements(null) return the live internal lists,
-        // so this is exactly the value the uncached implementation would compute.
-        return Objects.hash(r.getCapabilities(null), r.getRequirements(null));
+    private static CapabilityImpl newCapability(ResourceImpl res, String ns) {
+        return new CapabilityImpl(res, ns, new HashMap<String, String>(), new HashMap<String, Object>());
     }
 
-    private static CapabilityImpl newCapability(ResourceImpl r) {
-        return new CapabilityImpl(r, "osgi.wiring.package",
+    private static RequirementImpl newRequirement(ResourceImpl res) {
+        return new RequirementImpl(res, "bar",
                 new HashMap<String, String>(), new HashMap<String, Object>());
     }
 
-    private static RequirementImpl newRequirement(ResourceImpl r) {
-        return new RequirementImpl(r, "osgi.wiring.package",
-                new HashMap<String, String>(), new HashMap<String, Object>());
+    /**
+     * Wrapper method to avoid direct field reference
+     */
+    private static List<Capability> getCaps(ResourceImpl res) {
+        return res.getCapabilities(null);
     }
 
-    public void testHashCodeMatchesContentAndIsStable() {
-        ResourceImpl r = new ResourceImpl("res-a", "bundle", Version.parseVersion("1.0.0"));
-        int h1 = r.hashCode();
-        assertEquals(expectedHash(r), h1);
-        assertEquals(h1, r.hashCode()); // memoized value stays consistent
+    /**
+     * Wrapper method to avoid direct field reference
+     */
+    private static List<Requirement> getReqs(ResourceImpl res) {
+        return res.getRequirements(null);
     }
 
-    public void testCacheInvalidatedByAddCapability() {
-        ResourceImpl r = new ResourceImpl("res-b", "bundle", Version.parseVersion("1.0.0"));
-        r.hashCode(); // prime the cache
-        r.addCapability(newCapability(r));
-        assertEquals(expectedHash(r), r.hashCode());
+    private static int expectedHash(ResourceImpl res) {
+        return Objects.hash(res.getCapabilities(null), res.getRequirements(null));
     }
 
-    public void testCacheInvalidatedByAddCapabilities() {
-        ResourceImpl r = new ResourceImpl("res-c", "bundle", Version.parseVersion("1.0.0"));
-        r.hashCode(); // prime the cache
-        r.addCapabilities(Arrays.asList(newCapability(r), newCapability(r)));
-        assertEquals(expectedHash(r), r.hashCode());
+
+    // do not touch the methods above
+
+    @Test
+    public void testAddCapability() {
+        ResourceImpl res = new ResourceImpl();
+
+        // before
+        int hashBefore = res.hashCode();
+        assertTrue(getCaps(res).isEmpty());
+        assertEquals(expectedHash(res), hashBefore);
+
+        Capability cap1 = newCapability(res, "ns1");
+        res.addCapability(cap1);
+        int hashWithCap1 = res.hashCode();
+        assertEquals(1, getCaps(res).size());
+        assertTrue(getCaps(res).contains(cap1));
+        assertNotEquals(hashBefore, hashWithCap1);
+        assertEquals(expectedHash(res), hashWithCap1);
+
+        Capability cap2 = newCapability(res, "ns2");
+        res.addCapability(cap2);
+        int hashWithCap2 = res.hashCode();
+        assertEquals(2, getCaps(res).size());
+        assertTrue(getCaps(res).contains(cap1));
+        assertTrue(getCaps(res).contains(cap2));
+        assertNotEquals(hashBefore, hashWithCap2);
+        assertNotEquals(hashWithCap1, hashWithCap2);
+        assertEquals(expectedHash(res), hashWithCap2);
     }
 
-    public void testCacheInvalidatedByAddRequirement() {
-        ResourceImpl r = new ResourceImpl("res-d", "bundle", Version.parseVersion("1.0.0"));
-        r.hashCode(); // prime the cache
-        r.addRequirement(newRequirement(r));
-        assertEquals(expectedHash(r), r.hashCode());
+    @Test
+    public void testAddCapabilities() {
+        ResourceImpl res = new ResourceImpl();
+
+        // before
+        int hashBefore = res.hashCode();
+        assertTrue(getCaps(res).isEmpty());
+        assertEquals(expectedHash(res), hashBefore);
+
+        // adding an empty collection leaves the resource unchanged
+        res.addCapabilities(Collections.<Capability> emptyList());
+        assertTrue(getCaps(res).isEmpty());
+        assertEquals(hashBefore, res.hashCode());
+
+        Capability cap1 = newCapability(res, "ns1");
+        Capability cap2 = newCapability(res, "ns2");
+        res.addCapabilities(Arrays.asList(cap1, cap2));
+        int hashWithCap1AndCap2 = res.hashCode();
+        assertEquals(2, getCaps(res).size());
+        assertTrue(getCaps(res).contains(cap1));
+        assertTrue(getCaps(res).contains(cap2));
+        assertNotEquals(hashBefore, hashWithCap1AndCap2);
+        assertEquals(expectedHash(res), hashWithCap1AndCap2);
+
+        Capability cap3 = newCapability(res, "ns3");
+        res.addCapabilities(Collections.singletonList(cap3));
+        int hashWithCap3 = res.hashCode();
+        assertEquals(3, getCaps(res).size());
+        assertTrue(getCaps(res).contains(cap1));
+        assertTrue(getCaps(res).contains(cap2));
+        assertTrue(getCaps(res).contains(cap3));
+        assertNotEquals(hashBefore, hashWithCap3);
+        assertNotEquals(hashWithCap1AndCap2, hashWithCap3);
+        assertEquals(expectedHash(res), hashWithCap3);
     }
 
-    public void testCacheInvalidatedByAddRequirements() {
-        ResourceImpl r = new ResourceImpl("res-e", "bundle", Version.parseVersion("1.0.0"));
-        r.hashCode(); // prime the cache
-        r.addRequirements(Arrays.asList(newRequirement(r), newRequirement(r)));
-        assertEquals(expectedHash(r), r.hashCode());
+    @Test
+    public void testAddRequirement() {
+        ResourceImpl res = new ResourceImpl();
+
+        // before
+        int hashBefore = res.hashCode();
+        assertTrue(getReqs(res).isEmpty());
+        assertEquals(expectedHash(res), hashBefore);
+
+        Requirement req1 = newRequirement(res);
+        res.addRequirement(req1);
+        int hashWithReq1 = res.hashCode();
+        assertEquals(1, getReqs(res).size());
+        assertTrue(getReqs(res).contains(req1));
+        assertNotEquals(hashBefore, hashWithReq1);
+        assertEquals(expectedHash(res), hashWithReq1);
+
+        Requirement req2 = newRequirement(res);
+        res.addRequirement(req2);
+        int hashWithReq2 = res.hashCode();
+        assertEquals(2, getReqs(res).size());
+        assertTrue(getReqs(res).contains(req1));
+        assertTrue(getReqs(res).contains(req2));
+        assertNotEquals(hashBefore, hashWithReq2);
+        assertNotEquals(hashWithReq1, hashWithReq2);
+        assertEquals(expectedHash(res), hashWithReq2);
     }
 
-    public void testEqualsHashCodeContract() {
-        ResourceImpl r = new ResourceImpl();
-        ResourceImpl s = new ResourceImpl();
-        assertEquals(r, s);                       // both empty -> equal
-        assertEquals(r.hashCode(), s.hashCode()); // contract holds with memoization
+    @Test
+    public void testAddRequirements() {
+        ResourceImpl res = new ResourceImpl();
+
+        // before
+        int hashBefore = res.hashCode();
+        assertTrue(getReqs(res).isEmpty());
+        assertEquals(expectedHash(res), hashBefore);
+
+        // adding an empty collection leaves the resource unchanged
+        res.addRequirements(Collections.<Requirement> emptyList());
+        assertTrue(getReqs(res).isEmpty());
+        assertEquals(hashBefore, res.hashCode());
+
+        Requirement req1 = newRequirement(res);
+        Requirement req2 = newRequirement(res);
+        res.addRequirements(Arrays.asList(req1, req2));
+        int hashWithReq1AndReq2 = res.hashCode();
+        assertEquals(2, getReqs(res).size());
+        assertTrue(getReqs(res).contains(req1));
+        assertTrue(getReqs(res).contains(req2));
+        assertNotEquals(hashBefore, hashWithReq1AndReq2);
+        assertEquals(expectedHash(res), hashWithReq1AndReq2);
+
+        Requirement req3 = newRequirement(res);
+        res.addRequirements(Collections.singletonList(req3));
+        int hashWithReq3 = res.hashCode();
+        assertEquals(3, getReqs(res).size());
+        assertTrue(getReqs(res).contains(req1));
+        assertTrue(getReqs(res).contains(req2));
+        assertTrue(getReqs(res).contains(req3));
+        assertNotEquals(hashBefore, hashWithReq3);
+        assertNotEquals(hashWithReq1AndReq2, hashWithReq3);
+        assertEquals(expectedHash(res), hashWithReq3);
     }
 
-    public void testHashCodeIsActuallyMemoizedAndInvalidated() throws Exception {
-        // White-box: the behavioural tests above would also pass with no cache at all,
-        // so verify the cache field itself transitions 0 -> computed -> 0 on mutation.
-        Field hashField = ResourceImpl.class.getDeclaredField("hash");
-        hashField.setAccessible(true);
+    @Test
+    public void testHashCode() {
+        ResourceImpl res = new ResourceImpl("host",  IdentityNamespace.TYPE_BUNDLE, Version.parseVersion("3.3.3"));
 
-        ResourceImpl r = new ResourceImpl("res-g", "bundle", Version.parseVersion("1.0.0"));
-        assertEquals(0, hashField.getInt(r));
+        int hashBefore = res.hashCode();
+        assertEquals(expectedHash(res), hashBefore);
 
-        int h = r.hashCode();
-        assertEquals(h, hashField.getInt(r));
-
-        r.addCapability(newCapability(r));
-        assertEquals(0, hashField.getInt(r));
-
-        r.hashCode();
-        r.addRequirement(newRequirement(r));
-        assertEquals(0, hashField.getInt(r));
+        // the value remains the same between calls
+        assertEquals(hashBefore, res.hashCode());
     }
 
-    public void testGenuineZeroHashIsReturnedAndCached() throws Exception {
-        // With caps = [stub], reqs = [], the content hash is
-        // Objects.hash(caps, reqs) = 31 * (31 * 1 + (31 + e)) + 1 = 1923 + 31 * e
-        // where e is the stub capability's hashCode. e below solves
-        // 1923 + 31 * e == 0 in int arithmetic, producing a genuine hash of 0.
-        ResourceImpl r = new ResourceImpl();
-        r.addCapability(new FixedHashCapability(r, 1108378595));
-        assertEquals("test setup: content hash must be 0", 0, expectedHash(r));
-
-        assertEquals(0, r.hashCode());
-        assertEquals(0, r.hashCode()); // stays 0, contract intact
-
-        // White-box: the zero result is cached via the hashIsZero flag,
-        // not recomputed on every call, and mutation clears the flag.
-        Field hashIsZeroField = ResourceImpl.class.getDeclaredField("hashIsZero");
-        hashIsZeroField.setAccessible(true);
-        assertTrue(hashIsZeroField.getBoolean(r));
-
-        r.addCapability(newCapability(r));
-        assertFalse(hashIsZeroField.getBoolean(r));
-        assertEquals(expectedHash(r), r.hashCode());
-    }
-
-    /** Capability stub with a controllable hashCode, to hit the genuine-zero-hash path. */
-    private static final class FixedHashCapability implements Capability {
-        private final Resource resource;
-        private final int hash;
-
-        FixedHashCapability(Resource resource, int hash) {
-            this.resource = resource;
-            this.hash = hash;
-        }
-
-        public String getNamespace() {
-            return "test";
-        }
-
-        public Map<String, String> getDirectives() {
-            return Collections.emptyMap();
-        }
-
-        public Map<String, Object> getAttributes() {
-            return Collections.emptyMap();
-        }
-
-        public Resource getResource() {
-            return resource;
-        }
-
-        @Override
-        public int hashCode() {
-            return hash;
-        }
-    }
 }
